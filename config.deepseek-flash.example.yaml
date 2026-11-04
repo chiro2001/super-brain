@@ -1,0 +1,54 @@
+# 首版验收配置：所有真实推理只调用 LiteLLM 的 deepseek-flash。
+# 角色别名不表示不同物理后端，也不会调用生产 ZL。
+database: .runtime/deepseek-flash.db
+listen: 127.0.0.1
+port: 8765
+poll_interval: 15
+reconnect_interval: 5
+auto_dispatch: false
+hosts: []
+# 在 hosts 中填写授权的 SSH 主机、专用 worker socket 和 allowed_roots。
+# 需要反向转发时设置 gateway_remote_port，参见 README 的 init-worker 步骤。
+default_task_budget:
+  max_requests: 20
+  max_tokens: 500000
+  max_retries: 2
+  max_agents: 0
+backends:
+  - id: deepseek-flash-pool
+    name: deepseek-flash 受管配额池（物理后端未知）
+    kind: unknown
+    health: available
+    max_sessions: 2
+    max_requests: 1
+# available 表示允许使用这个受管配额池，不代表已观测到 vLLM 健康。
+# 这里是明确配置的逻辑准入池；未知物理实例不会另建或叠加容量。
+# 不填写虚构 metrics；生产 metrics 接入是后续工作。
+routes:
+  - id: flash-execution
+    name: deepseek-flash
+    backend_ids: [deepseek-flash-pool]
+    upstream_model: deepseek-flash
+  - id: flash-continuation
+    name: deepseek-flash-continue
+    backend_ids: [deepseek-flash-pool]
+    upstream_model: deepseek-flash
+  - id: flash-compaction
+    name: ZL-DeepSeek-v4.1
+    purpose: recovery
+    opaque: true
+    backend_ids: [deepseek-flash-pool]
+    upstream_model: deepseek-flash
+# ZL 是当前恢复协议使用的逻辑角色名；该配置显式映射到 deepseek-flash。
+inference:
+  enabled: true
+  upstream_url: http://127.0.0.1:11112/v1
+  api_key_env: SUPER_BRAIN_UPSTREAM_KEY
+  public_url: http://127.0.0.1:8765
+  ledger_path: .runtime/deepseek-flash-usage.db
+  total_token_limit: 90000000
+  max_output_tokens: 8192
+  max_concurrent_requests: 1
+  queue_timeout: 600
+# 配置管理令牌 SUPER_BRAIN_TOKEN。上游 key 仅通过环境变量提供。
+# supervisor 按 README 配置；未配置决策器时仍采集状态并显示待决策。

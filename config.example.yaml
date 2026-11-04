@@ -1,0 +1,75 @@
+# 复制为 config.local.yaml 后填写实际连接。密钥通过环境变量提供。
+database: .runtime/super-brain.db
+listen: 127.0.0.1
+port: 8765
+allowed_hosts: ["127.0.0.1:*", "localhost:*", "[::1]:*"]
+poll_interval: 15
+reconnect_interval: 5
+auto_dispatch: false
+default_task_budget:
+  max_requests: 20
+  max_tokens: 500000
+  max_retries: 2
+  max_agents: 0
+hosts: []
+# 示例主机：
+# - id: server-a2
+#   name: a2
+#   address: SSH别名或地址
+#   codex_command: [codex]
+#   codex_home: /home/用户/.codex
+#   control_socket: /home/用户/.codex/app-server-control/app-server-control.sock
+#   allowed_roots: [/home/用户/projects]
+# 请求硬预算的执行端使用 init-worker 创建的独立 CODEX_HOME 和 socket。
+#   gateway_remote_port: 18876
+# 上述端口通过 SSH 反向转发到管理服务；worker 默认 URL 为
+# http://127.0.0.1:18876/inference/v1。只观测个人环境时不需要此项。
+backends:
+  - id: a2
+    name: a2 PD 混部
+    kind: mixed
+    health: unknown
+    max_sessions: 1
+    max_requests: 1
+    # metrics_url: http://已确认的a2服务地址:端口/metrics
+  - id: a3
+    name: a3 PD 分离
+    kind: pd
+    health: unknown
+    max_sessions: 1
+    max_requests: 1
+    # metrics_url: http://已确认的a3服务地址:端口/metrics
+routes:
+  - id: a2-execution
+    name: A2-dsv41f
+    backend_ids: [a2]
+  - id: a3-execution
+    name: A3-dsv41f
+    backend_ids: [a3]
+  - id: a3-secondary
+    name: A3-dsv41f-2
+    backend_ids: [a3]
+    enabled: false
+  - id: recovery-zl
+    name: ZL-DeepSeek-v4.1
+    purpose: recovery
+    opaque: true
+
+# 需要新会话的请求级预算时启用，并先配置专用 worker。已有个人会话保留原生用量估算。
+inference:
+  enabled: false
+  upstream_url: ""
+  api_key_env: SUPER_BRAIN_UPSTREAM_KEY
+  ledger_path: .runtime/inference-usage.db
+  total_token_limit: 90000000
+  max_concurrent_requests: 2
+
+# 可选自动决策器，未配置时显示待处理，常规采集仍正常工作。
+# supervisor:
+#   kind: codex
+#   host_id: 你的管理Codex主机ID
+#   cwd: /home/user/projects/manager
+#   model: deepseek-flash
+#   model_provider: 与daemon一致的provider标识
+#   max_invocations: 20
+#   structured_output: false
